@@ -542,6 +542,10 @@ abstract class ConnectionBase: ISelectClient
 
         ***********************************************************************/
 
+        uint loop_cycles, received_messages;
+
+        import ocean.io.Stdout;
+
         private void fiberMethod ( )
         in
         {
@@ -563,8 +567,14 @@ abstract class ConnectionBase: ISelectClient
 
                 while (!this.connection_closed)
                 {
+                    this.loop_cycles++;
                     this.outer.receiver.receive(
-                        cast(Event)this.suspend(this.fiber_token.create(true), this.outer).num,
+                        {
+                            Stdout.formatln("read loop cycles: {}, received messages: {}", this.loop_cycles, this.received_messages);
+                            this.loop_cycles = 0;
+                            this.received_messages = 0;
+                            return cast(Event)this.suspend(this.fiber_token.create(true), this.outer).num;
+                        }(),
                         &this.receivedMessage
                     );
                 }
@@ -602,6 +612,8 @@ abstract class ConnectionBase: ISelectClient
             // Don't parse any subsequent pending messages.
             if ( this.connection_closed )
                 return;
+
+            this.received_messages++;
 
             auto request_id =
                 *this.outer.parser.getValue!(RequestId)(msg_body);
