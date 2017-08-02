@@ -417,6 +417,8 @@ abstract class ConnectionBase: ISelectClient
     {
         import ocean.util.container.ebtree.c.eb64tree: eb64_node;
 
+        import ocean.io.select.client.SelectEvent;
+
         /***********************************************************************
 
             Token used when suspending/resuming the fiber.
@@ -451,6 +453,8 @@ abstract class ConnectionBase: ISelectClient
 
         private TreeMap!() set;
 
+        private SelectEvent resume_event;
+
         /***********************************************************************
 
             Constructor.
@@ -460,6 +464,8 @@ abstract class ConnectionBase: ISelectClient
         public this ( )
         {
             super(&this.fiberMethod, FIBER_STACK_SIZE);
+            this.resume_event = new SelectEvent(&this.handleResumeEvent);
+            this.outer.epoll.register(this.resume_event);
         }
 
         /***********************************************************************
@@ -586,6 +592,21 @@ abstract class ConnectionBase: ISelectClient
             }
         }
 
+        private bool resume_on_event = false;
+
+        private bool handleResumeEvent ( )
+        {
+            if (this.resume_on_event)
+                this.resume(this.fiber_token.get(), this.outer);
+            return true;
+        }
+
+        override public Message resume ( Token token, Object identifier = null, Message msg = Message.init )
+        {
+            this.resume_on_event = false;
+            return super.resume(token, identifier, msg);
+        }
+
         /***********************************************************************
 
             Handles a received message.
@@ -612,6 +633,9 @@ abstract class ConnectionBase: ISelectClient
                 case type.Request:
                     // msg_body is now the request payload
                     this.outer.setReceivedPayload(request_id, msg_body);
+                    this.resume_on_event = true;
+                    this.resume_event.trigger();
+                    this.suspend(this.fiber_token.get(), this.outer);
                     break;
 
                 default: // TODO: throw
